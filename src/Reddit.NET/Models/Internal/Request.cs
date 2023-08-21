@@ -1,11 +1,13 @@
 ﻿using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using Reddit.Controllers;
 using Reddit.Exceptions;
 using Reddit.Models.EventArgs;
 using Reddit.Things;
 using RestSharp;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Reflection;
 using System.Text;
@@ -91,7 +93,7 @@ namespace Reddit.Models.Internal
 
         public RestRequest PrepareRequest(string url, Method method = Method.GET, string contentType = "application/x-www-form-urlencoded")
         {
-            RestRequest restRequest = new RestRequest(url, method);
+            RestRequest restRequest = new RestRequest($"{url}{(AppId == null ? ".json" : "")}", method);
 
             return PrepareRequest(restRequest, contentType);
         }
@@ -198,6 +200,14 @@ namespace Reddit.Models.Internal
                 }
             } while ((res == null || res.StatusCode == HttpStatusCode.ServiceUnavailable) && serviceRetry > 0);
 
+            int rateLimitAmountReqsUsedIn10m = int.Parse(res?.Headers.First(h => h.Name == "x-ratelimit-used").Value.ToString());
+            int rateLimitAmountReqsRemainingIn10m = int.Parse(res?.Headers.First(h => h.Name == "x-ratelimit-remaining").Value.ToString());
+            float rateLimitRemainingPercentOver1 = rateLimitAmountReqsRemainingIn10m / ((float)rateLimitAmountReqsRemainingIn10m + rateLimitAmountReqsUsedIn10m);
+            TimeSpan rateLimitTimeToReset = TimeSpan.FromSeconds(int.Parse(res?.Headers.First(h => h.Name == "x-ratelimit-reset").Value.ToString()));
+
+            var content = JsonConvert.DeserializeObject<GenericContainer>(res.Content).JSON;
+            Console.WriteLine($"Sent request to reddit: {restRequest.Resource}. Rate limit: {rateLimitAmountReqsUsedIn10m}, {rateLimitAmountReqsRemainingIn10m} ({rateLimitRemainingPercentOver1*100:N2}%) remaining, reset in {rateLimitTimeToReset.TotalSeconds:N0} seconds ({rateLimitTimeToReset.TotalMinutes:N1} minutes).");
+
             return res;
         }
 
@@ -212,8 +222,12 @@ namespace Reddit.Models.Internal
                 && res.Content.Contains("\"ratelimit\":")
                 && (res.Content.Contains("seconds") || res.Content.Contains("second")))
             {
+                TimeSpan rateLimit = TimeSpan.FromMilliseconds(GetRateLimit(res.Content));
+
+                Console.WriteLine($"⚠ You are being rate-limited {rateLimit.TotalMilliseconds:N0} ms");
+
                 // Confirm the errors JSON and extract the wait time.  --Kris
-                Thread.Sleep(GetRateLimit(res.Content));
+                Thread.Sleep(rateLimit);
 
                 ratelimited = true;
                 retry--;
