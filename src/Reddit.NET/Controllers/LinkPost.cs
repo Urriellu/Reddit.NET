@@ -5,6 +5,7 @@ using Reddit.Inputs.Listings;
 using Reddit.Things;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace Reddit.Controllers
@@ -33,6 +34,14 @@ namespace Reddit.Controllers
                 Listing.Preview = value;
             }
         }
+
+        public string PreviewImageUrl => Preview?["images"]?.FirstOrDefault()?["source"]?.Value<string>("url");
+
+        public string PreviewImageUrlSmallest => Preview?["images"]?.FirstOrDefault()?["resolutions"]?.FirstOrDefault()?.Value<string>("url") ?? PreviewImageUrl;
+
+        public string PreviewImageUrlLargest => Preview?["images"]?.FirstOrDefault()?["resolutions"]?.LastOrDefault()?.Value<string>("url") ?? PreviewImageUrl;
+
+        public bool HasPreviewImage => PreviewImageUrlLargest != null;
 
         /// <summary>
         /// The URL the LinkPost points to.
